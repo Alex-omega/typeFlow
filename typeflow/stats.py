@@ -18,6 +18,8 @@ class TypingStatsEngine:
         self._last_event_ts: Optional[float] = None
         self._keys_this_session = 0
         self._engaged_start: Optional[float] = None
+        self._history_buffer: str = ""
+        self._history_last_ts: Optional[float] = None
 
     def _finalize_session(self, end_ts: float) -> None:
         if self._current_session_start is None:
@@ -31,6 +33,7 @@ class TypingStatsEngine:
             keystrokes=self._keys_this_session,
             engaged_seconds=engaged_seconds,
         )
+        self._flush_history(force=True)
         self.db.add_session(session)
         day = datetime.fromtimestamp(self._current_session_start).strftime("%Y-%m-%d")
         streak = 1 if (end_ts - self._current_session_start) >= config.STREAK_MIN_DURATION else 0
@@ -57,9 +60,7 @@ class TypingStatsEngine:
 
             self._keys_this_session += 1
             self.db.increment_key_usage(key_label)
-            if self.crypto and text:
-                encrypted = self.crypto.encrypt_text(text)
-                self.db.add_secure_event(timestamp, encrypted)
+            self._append_history(text=text, ts=timestamp)
 
             elapsed = timestamp - self._current_session_start
             if self._engaged_start is None and elapsed >= config.ENGAGE_THRESHOLD_SECONDS:
@@ -70,6 +71,7 @@ class TypingStatsEngine:
     def tick_idle(self) -> None:
         with self._lock:
             if self._last_event_ts and (time.time() - self._last_event_ts) > config.IDLE_THRESHOLD_SECONDS:
+                self._flush_history(force=True)
                 self._finalize_session(self._last_event_ts)
 
     def snapshot(self) -> StatsSnapshot:
@@ -94,3 +96,25 @@ class TypingStatsEngine:
     def set_crypto(self, crypto: Optional[CryptoManager]) -> None:
         with self._lock:
             self.crypto = crypto
+
+    def _append_history(self, text: str, ts: float) -> None:
+        if not text or not self.crypto:
+            return
+        if self._history_buffer and self._history_last_ts:
+            if (ts - self._history_last_ts) > config.HISTORY_MERGE_WINDOW_SECONDS:
+                self._flush_history()
+        self._history_buffer += text
+        self._history_last_ts = ts
+        if text.endswith("\n"):
+            self._flush_history()
+
+    def _flush_history(self, force: bool = False) -> None:
+        if not self._history_buffer or not self.crypto:
+            self._history_buffer = ""
+            self._history_last_ts = None
+            return
+        ts = self._history_last_ts or time.time()
+        encrypted = self.crypto.encrypt_text(self._history_buffer)
+        self.db.add_secure_event(ts, encrypted)
+        self._history_buffer = ""
+        self._history_last_ts = None

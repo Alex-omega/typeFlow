@@ -8,6 +8,7 @@ Windows tray application that records typing activity in the background, stores 
 - Dashboards for key frequency, average typing speed, cumulative counts, and peak activity windows.
 - Secure history viewer unlocked with the user’s password; first launch prompts for password creation.
 - System tray experience: start/stop capture, quick glance stats, and opening the main dashboard.
+- Settings page: pause/resume capture, switch theme (dark/light/system), and adjust font scale.
 
 ## Getting started
 1) Install dependencies (network access required):

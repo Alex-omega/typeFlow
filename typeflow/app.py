@@ -22,6 +22,8 @@ class TypeFlowController:
         self.engine = TypingStatsEngine(self.db, crypto=None)
         self.monitor = KeyboardMonitor(self.engine)
         self.capturing = False
+        self.theme = self.db.get_meta("ui_theme") or config.DEFAULT_THEME
+        self.font_scale = float(self.db.get_meta("ui_font_scale") or config.DEFAULT_FONT_SCALE)
 
     def ensure_password(self, parent) -> bool:
         record = self.db.load_password_record()
@@ -96,6 +98,21 @@ class TypeFlowController:
         self.monitor.engine = self.engine
         self.capturing = False
         return ok
+
+    def set_theme(self, theme: str) -> None:
+        self.theme = theme
+        self.db.set_meta("ui_theme", theme)
+
+    def set_font_scale(self, scale: float) -> None:
+        self.font_scale = scale
+        self.db.set_meta("ui_font_scale", str(scale))
+
+    def settings_snapshot(self):
+        return {
+            "theme": self.theme,
+            "font_scale": self.font_scale,
+            "capturing": self.capturing,
+        }
 
     def shutdown(self):
         self.pause_capture()

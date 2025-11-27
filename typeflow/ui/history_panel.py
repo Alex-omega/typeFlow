@@ -24,6 +24,7 @@ class HistoryPage(QWidget):
         parent=None,
     ):
         super().__init__(parent=parent)
+        self.setObjectName("HistoryPage")
         self.unlock_handler = unlock_handler
         self.fetch_handler = fetch_handler
         self.page = 0

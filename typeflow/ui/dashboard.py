@@ -36,6 +36,7 @@ class SummaryCard(CardWidget):
 class DashboardPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.setObjectName("DashboardPage")
         self._build_ui()
 
     def _build_ui(self) -> None:

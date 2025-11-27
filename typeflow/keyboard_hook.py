@@ -46,7 +46,7 @@ class KeyboardMonitor:
 
     def _on_press(self, key) -> None:
         key_label = self._key_label(key)
-        text = key.char if hasattr(key, "char") and key.char else key_label
+        text = self._text_value(key, key_label)
         self.engine.handle_event(key_label=key_label, text=text)
 
     def _key_label(self, key) -> str:
@@ -55,6 +55,23 @@ class KeyboardMonitor:
         if hasattr(key, "char") and key.char:
             return key.char
         return str(key)
+
+    def _text_value(self, key, key_label: str) -> str:
+        # Map special keys to meaningful text for history merging
+        if hasattr(key, "char") and key.char:
+            return key.char
+        if key == keyboard.Key.space:
+            return " "
+        if key == keyboard.Key.enter:
+            return "\n"
+        # Skip modifiers to avoid clutter
+        if key in {keyboard.Key.shift, keyboard.Key.shift_r, keyboard.Key.ctrl, keyboard.Key.ctrl_r, keyboard.Key.alt, keyboard.Key.alt_r}:
+            return ""
+        if key == keyboard.Key.tab:
+            return "\t"
+        if key == keyboard.Key.backspace:
+            return ""  # do not record deleted chars; keep history clean
+        return key_label
 
     def _idle_watchdog(self) -> None:
         while True:
