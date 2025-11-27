@@ -20,6 +20,7 @@ class Database:
 
     def _setup(self) -> None:
         with self._conn:
+            self._conn.execute("PRAGMA journal_mode=WAL;")
             self._conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS meta (

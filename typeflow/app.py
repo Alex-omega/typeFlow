@@ -1,3 +1,4 @@
+import multiprocessing as mp
 import shutil
 import sys
 from typing import List, Optional
@@ -10,6 +11,7 @@ from .encryption import CryptoManager
 from .keyboard_hook import KeyboardMonitor
 from .models import HistoryEntry
 from .stats import TypingStatsEngine
+from .service import run_service
 from .ui.main_window import MainWindow
 from .ui.password_dialog import PasswordDialog
 from .ui.tray import TrayIcon
@@ -20,10 +22,21 @@ class TypeFlowController:
         self.db = open_database()
         self.crypto: Optional[CryptoManager] = None
         self.engine = TypingStatsEngine(self.db, crypto=None)
-        self.monitor = KeyboardMonitor(self.engine)
         self.capturing = False
         self.theme = self.db.get_meta("ui_theme") or config.DEFAULT_THEME
-        self.font_scale = float(self.db.get_meta("ui_font_scale") or config.DEFAULT_FONT_SCALE)
+        font_size_meta = self.db.get_meta("ui_font_size")
+        if font_size_meta:
+            self.font_size = float(font_size_meta)
+        else:
+            # backward compatibility: support old font scale meta
+            legacy_scale = self.db.get_meta("ui_font_scale")
+            if legacy_scale:
+                self.font_size = max(8.0, float(legacy_scale) * config.DEFAULT_FONT_SIZE)
+            else:
+                self.font_size = config.DEFAULT_FONT_SIZE
+        self.service_process: Optional[mp.Process] = None
+        self.stop_event: Optional[mp.Event] = None
+        self.capture_flag: Optional[mp.Value] = None
 
     def ensure_password(self, parent) -> bool:
         record = self.db.load_password_record()
@@ -52,6 +65,9 @@ class TypeFlowController:
             return False
         self.crypto = mgr
         self.engine.set_crypto(mgr)
+        if self.capture_flag is None and self.service_process is None:
+            # if service not started, start it with the unlocked password
+            self.start_service(password)
         return True
 
     def fetch_history(self, offset: int, limit: int) -> List[HistoryEntry]:
@@ -75,7 +91,8 @@ class TypeFlowController:
     def pause_capture(self):
         if not self.capturing:
             return
-        self.monitor.stop()
+        if self.capture_flag:
+            self.capture_flag.value = False
         self.capturing = False
 
     def uninstall(self) -> bool:
@@ -95,7 +112,6 @@ class TypeFlowController:
             ok = False
         self.db = open_database()
         self.engine = TypingStatsEngine(self.db, crypto=None)
-        self.monitor.engine = self.engine
         self.capturing = False
         return ok
 
@@ -103,16 +119,40 @@ class TypeFlowController:
         self.theme = theme
         self.db.set_meta("ui_theme", theme)
 
-    def set_font_scale(self, scale: float) -> None:
-        self.font_scale = scale
-        self.db.set_meta("ui_font_scale", str(scale))
+    def set_font_size(self, size: float) -> None:
+        self.font_size = size
+        self.db.set_meta("ui_font_size", str(size))
 
     def settings_snapshot(self):
         return {
             "theme": self.theme,
-            "font_scale": self.font_scale,
+            "font_size": self.font_size,
             "capturing": self.capturing,
         }
+
+    def start_service(self, password: str) -> None:
+        if self.service_process and self.service_process.is_alive():
+            return
+        mp.set_start_method("spawn", force=True)
+        self.stop_event = mp.Event()
+        self.capture_flag = mp.Value("b", True)
+        self.capturing = True
+        self.service_process = mp.Process(
+            target=run_service,
+            args=(self.stop_event, self.capture_flag, password),
+            daemon=True,
+        )
+        self.service_process.start()
+
+    def stop_service(self) -> None:
+        if self.stop_event:
+            self.stop_event.set()
+        if self.service_process:
+            self.service_process.join(timeout=5)
+        self.service_process = None
+        self.stop_event = None
+        self.capture_flag = None
+        self.capturing = False
 
     def shutdown(self):
         self.pause_capture()
@@ -125,11 +165,13 @@ def main():
     controller = TypeFlowController()
     if not controller.ensure_password(None):
         return
+    # ensure monitor service is running
+    if controller.crypto:
+        controller.start_service(password=controller.crypto.password if hasattr(controller.crypto, "password") else "")
     window = MainWindow(controller)
     tray = TrayIcon(controller, window)
     tray.show()
     window.show()
-    controller.start_capture()
     sys.exit(app.exec_())
 
 

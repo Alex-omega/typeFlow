@@ -2,6 +2,7 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QIcon, QFont
 from PyQt5.QtWidgets import QApplication
 from qfluentwidgets import (
+    Dialog,
     FluentIcon,
     FluentWindow,
     InfoBar,
@@ -24,7 +25,7 @@ class MainWindow(FluentWindow):
         super().__init__(parent=parent)
         self.controller = controller
         self.apply_theme(controller.theme)
-        self.apply_font_scale(controller.font_scale)
+        self.apply_font_size(controller.font_size)
         self.dashboard_page = DashboardPage(self)
         self.history_page = HistoryPage(
             unlock_handler=self._unlock_history,
@@ -35,7 +36,7 @@ class MainWindow(FluentWindow):
             initial_state=self.controller.settings_snapshot(),
             on_capture_toggle=self._on_capture_toggle,
             on_theme_change=self._on_theme_change,
-            on_font_scale_change=self._on_font_scale_change,
+            on_font_size_change=self._on_font_size_change,
             parent=self,
         )
         self._init_navigation()
@@ -116,8 +117,11 @@ class MainWindow(FluentWindow):
         self.apply_theme(theme)
 
     def _on_font_scale_change(self, scale: float) -> None:
-        self.controller.set_font_scale(scale)
-        self.apply_font_scale(scale)
+        pass  # deprecated
+
+    def _on_font_size_change(self, size: float) -> None:
+        self.controller.set_font_size(size)
+        self.apply_font_size(size)
 
     def apply_theme(self, theme: str) -> None:
         if theme == "light":
@@ -127,11 +131,29 @@ class MainWindow(FluentWindow):
         else:
             setTheme(Theme.DARK)
 
-    def apply_font_scale(self, scale: float) -> None:
+    def apply_font_size(self, size: float) -> None:
         app = QApplication.instance()
         if not app:
             return
         font = app.font()
-        base_size = font.pointSizeF() or 11.0
-        font.setPointSizeF(max(8.0, base_size * scale))
+        font.setPointSizeF(max(8.0, size))
         app.setFont(font)
+
+    def closeEvent(self, event):
+        # Prompt whether to exit backend or keep running
+        dlg = Dialog(
+            title="退出 TypeFlow？",
+            content="选择“退出全部”将关闭监控后台并退出应用。\n选择“仅关闭前台”则隐藏窗口并保留后台运行。",
+            parent=self,
+        )
+        dlg.yesButton.setText("退出全部")
+        dlg.cancelButton.setText("仅关闭前台")
+        dlg.yesButton.clicked.connect(lambda: dlg.done(Dialog.Accepted))
+        dlg.cancelButton.clicked.connect(lambda: dlg.done(Dialog.Rejected))
+        result = dlg.exec()
+        if result == Dialog.Accepted:
+            self.controller.stop_service()
+            event.accept()
+        else:
+            self.hide()
+            event.ignore()

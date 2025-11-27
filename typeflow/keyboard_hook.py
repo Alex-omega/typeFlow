@@ -29,6 +29,10 @@ class KeyboardMonitor:
         self._idle_thread = threading.Thread(target=self._idle_watchdog, daemon=True)
         self._running = False
 
+    @property
+    def running(self) -> bool:
+        return self._running
+
     def start(self) -> None:
         if self.listener:
             return

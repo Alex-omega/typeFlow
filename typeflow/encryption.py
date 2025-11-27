@@ -45,6 +45,7 @@ class CryptoManager:
     def __init__(self, password: str, salt: Optional[bytes] = None):
         self.salt = salt or os.urandom(config.SALT_BYTES)
         self.key = _derive_key(password, self.salt)
+        self.password = password  # keep in-memory for service reuse
 
     def password_record(self) -> PasswordRecord:
         verifier = hmac.new(self.key, b"typeflow-password", hashlib.sha256).digest()

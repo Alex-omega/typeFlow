@@ -2,7 +2,6 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QLabel,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -17,14 +16,14 @@ class SettingsPage(QWidget):
         initial_state: dict,
         on_capture_toggle,
         on_theme_change,
-        on_font_scale_change,
+        on_font_size_change,
         parent=None,
     ):
         super().__init__(parent=parent)
         self.setObjectName("SettingsPage")
         self.on_capture_toggle = on_capture_toggle
         self.on_theme_change = on_theme_change
-        self.on_font_scale_change = on_font_scale_change
+        self.on_font_size_change = on_font_size_change
         self._build_ui(initial_state)
 
     def _build_ui(self, state: dict) -> None:
@@ -41,7 +40,7 @@ class SettingsPage(QWidget):
         layout.addWidget(self.capture_checkbox)
 
         theme_row = QHBoxLayout()
-        theme_row.addWidget(QLabel("主题模式"))
+        theme_row.addWidget(BodyLabel("主题模式", self))
         self.theme_combo = QComboBox(self)
         self.theme_combo.addItems(["dark", "light", "system"])
         current_theme = state.get("theme", "dark")
@@ -54,16 +53,16 @@ class SettingsPage(QWidget):
         layout.addLayout(theme_row)
 
         font_row = QHBoxLayout()
-        font_row.addWidget(QLabel("字号缩放"))
+        font_row.addWidget(BodyLabel("字号", self))
         self.font_slider = QSlider(Qt.Horizontal, self)
-        self.font_slider.setMinimum(80)
-        self.font_slider.setMaximum(140)
-        self.font_slider.setSingleStep(5)
-        scale = float(state.get("font_scale", 1.0))
-        self.font_slider.setValue(int(scale * 100))
-        self.font_slider.valueChanged.connect(self._font_scale_changed)
+        self.font_slider.setMinimum(10)
+        self.font_slider.setMaximum(22)
+        self.font_slider.setSingleStep(1)
+        size = float(state.get("font_size", 14.0))
+        self.font_slider.setValue(int(size))
+        self.font_slider.valueChanged.connect(self._font_size_changed)
         font_row.addWidget(self.font_slider)
-        self.font_label = QLabel(f"{scale:.2f}x")
+        self.font_label = BodyLabel(f"{int(size)}", self)
         font_row.addWidget(self.font_label)
         layout.addLayout(font_row)
 
@@ -73,10 +72,9 @@ class SettingsPage(QWidget):
         enabled = state == Qt.Checked
         self.on_capture_toggle(enabled)
 
-    def _font_scale_changed(self, value: int):
-        scale = value / 100.0
-        self.font_label.setText(f"{scale:.2f}x")
-        self.on_font_scale_change(scale)
+    def _font_size_changed(self, value: int):
+        self.font_label.setText(f"{value}")
+        self.on_font_size_change(float(value))
 
     def update_capture_state(self, enabled: bool) -> None:
         self.capture_checkbox.blockSignals(True)
