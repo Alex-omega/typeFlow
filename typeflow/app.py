@@ -163,6 +163,7 @@ class TypeFlowController:
 def main():
     app = QApplication(sys.argv)
     controller = TypeFlowController()
+    first_run = controller.db.load_password_record() is None
     if not controller.ensure_password(None):
         return
     # ensure monitor service is running
@@ -171,7 +172,20 @@ def main():
     window = MainWindow(controller)
     tray = TrayIcon(controller, window)
     tray.show()
-    window.show()
+    if first_run:
+        window.show()
+    else:
+        # show transient toast in the center bottom
+        from qfluentwidgets import InfoBar, InfoBarPosition
+        InfoBar.success(
+            title="TypeFlow 已成功启动！",
+            content="后台正在运行，可在托盘打开主界面。",
+            orient=Qt.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.BOTTOM,
+            duration=3000,
+            parent=window,
+        )
     sys.exit(app.exec_())
 
 
