@@ -8,3 +8,5 @@ build/
 .vscode/
 .DS_Store
 *.spec
+PLAN.md
+.gitignore

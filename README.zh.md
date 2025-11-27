@@ -1,8 +1,8 @@
 # TypeFlow (中文说明)
 
-Windows 后台托盘应用，使用 Python、PyQt-Fluent-Widgets 和 PyQtGraph/Matplotlib 记录键盘输入，提供现代化可视化仪表盘，并将完整输入历史以用户密码加密存储到本地 SQLite。
+Windows 后台托盘应用，使用 Python、PyQt-Fluent-Widgets 和 PyQtGraph/Matplotlib 记录键盘输入，展示相关数据统计。
 
-## 功能亮点
+## 功能
 - 后台 `pynput` 键盘监听（不阻塞 UI），可随托盘启动/暂停。
 - SQLite 本地存储，完整输入历史 AES-GCM 加密；聚合统计无需密码即可查看。
 - 仪表盘展示：按键频次、平均打字速率、累计按键、活跃时段/日统计。
@@ -10,7 +10,7 @@ Windows 后台托盘应用，使用 Python、PyQt-Fluent-Widgets 和 PyQtGraph/M
 - Fluent 风格的主界面 + 托盘菜单；自定义图标已内置 (`typeflow/assets/icon.ico`)。
 
 ## 安装与运行
-1) 安装依赖（需联网）：
+1) 安装依赖：
    ```bash
    pip install -r requirements.txt
    ```
