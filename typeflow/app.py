@@ -3,6 +3,7 @@ import shutil
 import sys
 from typing import List, Optional
 
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox, QDialog
 
 from . import config
