@@ -1,0 +1,6 @@
+pynput
+PyQt5
+PyQt-Fluent-Widgets
+PyQtGraph
+matplotlib
+cryptography

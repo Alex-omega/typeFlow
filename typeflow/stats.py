@@ -1,0 +1,96 @@
+import threading
+import time
+from datetime import datetime
+from typing import Optional
+
+from . import config
+from .database import Database
+from .encryption import CryptoManager
+from .models import KeyFrequency, SessionStat, StatsSnapshot
+
+
+class TypingStatsEngine:
+    def __init__(self, db: Database, crypto: Optional[CryptoManager] = None):
+        self.db = db
+        self.crypto = crypto
+        self._lock = threading.Lock()
+        self._current_session_start: Optional[float] = None
+        self._last_event_ts: Optional[float] = None
+        self._keys_this_session = 0
+        self._engaged_start: Optional[float] = None
+
+    def _finalize_session(self, end_ts: float) -> None:
+        if self._current_session_start is None:
+            return
+        engaged_seconds = 0.0
+        if self._engaged_start:
+            engaged_seconds = max(0.0, end_ts - self._engaged_start)
+        session = SessionStat(
+            start_ts=self._current_session_start,
+            end_ts=end_ts,
+            keystrokes=self._keys_this_session,
+            engaged_seconds=engaged_seconds,
+        )
+        self.db.add_session(session)
+        day = datetime.fromtimestamp(self._current_session_start).strftime("%Y-%m-%d")
+        streak = 1 if (end_ts - self._current_session_start) >= config.STREAK_MIN_DURATION else 0
+        self.db.update_daily_summary(
+            day=day,
+            keystrokes=self._keys_this_session,
+            active_seconds=engaged_seconds,
+            streaks=streak,
+        )
+        self._current_session_start = None
+        self._last_event_ts = None
+        self._keys_this_session = 0
+        self._engaged_start = None
+
+    def handle_event(self, key_label: str, text: str, ts: Optional[float] = None) -> None:
+        timestamp = ts or time.time()
+        with self._lock:
+            if self._last_event_ts and (timestamp - self._last_event_ts) > config.IDLE_THRESHOLD_SECONDS:
+                self._finalize_session(self._last_event_ts)
+            if self._current_session_start is None:
+                self._current_session_start = timestamp
+                self._keys_this_session = 0
+                self._engaged_start = None
+
+            self._keys_this_session += 1
+            self.db.increment_key_usage(key_label)
+            if self.crypto and text:
+                encrypted = self.crypto.encrypt_text(text)
+                self.db.add_secure_event(timestamp, encrypted)
+
+            elapsed = timestamp - self._current_session_start
+            if self._engaged_start is None and elapsed >= config.ENGAGE_THRESHOLD_SECONDS:
+                self._engaged_start = timestamp - config.ENGAGE_THRESHOLD_SECONDS
+
+            self._last_event_ts = timestamp
+
+    def tick_idle(self) -> None:
+        with self._lock:
+            if self._last_event_ts and (time.time() - self._last_event_ts) > config.IDLE_THRESHOLD_SECONDS:
+                self._finalize_session(self._last_event_ts)
+
+    def snapshot(self) -> StatsSnapshot:
+        total_keys = self.db.total_keystrokes()
+        engaged_seconds = self.db.total_engaged_seconds()
+        avg_kpm = 0.0
+        if engaged_seconds > 0:
+            avg_kpm = (total_keys / engaged_seconds) * 60.0
+        top_keys = self.db.top_keys(limit=12)
+        today = datetime.now().strftime("%Y-%m-%d")
+        daily = self.db.daily_summary(today)
+        streaks_today = daily.streaks if daily else 0
+        active_today = daily.active_seconds if daily else 0.0
+        return StatsSnapshot(
+            total_keys=total_keys,
+            avg_kpm=avg_kpm,
+            top_keys=top_keys,
+            streaks_today=streaks_today,
+            active_seconds_today=active_today,
+        )
+
+    def set_crypto(self, crypto: Optional[CryptoManager]) -> None:
+        with self._lock:
+            self.crypto = crypto
