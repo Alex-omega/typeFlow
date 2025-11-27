@@ -1,3 +1,4 @@
+import shutil
 import sys
 from typing import List, Optional
 
@@ -74,6 +75,27 @@ class TypeFlowController:
             return
         self.monitor.stop()
         self.capturing = False
+
+    def uninstall(self) -> bool:
+        """Clear all stored data (db + password) and return to fresh state."""
+        self.pause_capture()
+        self.crypto = None
+        self.engine.set_crypto(None)
+        ok = True
+        try:
+            self.db.close()
+        except Exception:
+            ok = False
+        try:
+            if config.DATA_DIR.exists():
+                shutil.rmtree(config.DATA_DIR)
+        except Exception:
+            ok = False
+        self.db = open_database()
+        self.engine = TypingStatsEngine(self.db, crypto=None)
+        self.monitor.engine = self.engine
+        self.capturing = False
+        return ok
 
     def shutdown(self):
         self.pause_capture()

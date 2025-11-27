@@ -1,5 +1,5 @@
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QAction, QMenu, QSystemTrayIcon
+from PyQt5.QtWidgets import QAction, QMenu, QMessageBox, QSystemTrayIcon
 from qfluentwidgets import FluentIcon
 
 from ..resources import asset_path
@@ -25,6 +25,11 @@ class TrayIcon(QSystemTrayIcon):
         self.toggle_action.triggered.connect(self._toggle_capture)
         menu.addAction(self.toggle_action)
 
+        uninstall_action = QAction("取消安装（清除数据）", self)
+        uninstall_action.triggered.connect(self._uninstall)
+        menu.addAction(uninstall_action)
+        menu.addSeparator()
+
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self._quit)
         menu.addAction(quit_action)
@@ -44,6 +49,23 @@ class TrayIcon(QSystemTrayIcon):
             self.controller.start_capture()
             self.toggle_action.setText("Pause capture")
             self.showMessage("TypeFlow", "Keyboard capture running.")
+
+    def _uninstall(self) -> None:
+        confirm = QMessageBox.question(
+            self.window,
+            "TypeFlow",
+            "确定清除所有本地数据并恢复初始状态？此操作不可恢复。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        success = self.controller.uninstall()
+        if success:
+            self.toggle_action.setText("Resume capture")
+            self.showMessage("TypeFlow", "本地数据已清除，捕获已暂停。")
+        else:
+            self.showMessage("TypeFlow", "清除失败，请检查权限后重试。", QSystemTrayIcon.Critical)
 
     def _quit(self) -> None:
         self.controller.shutdown()

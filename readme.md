@@ -34,6 +34,9 @@ pyinstaller --noconfirm --windowed ^
 - Run inside your virtual environment if you use one.
 - Swap `--windowed` to `--console` if you prefer a console window for logs.
 
+## Reset / uninstall
+- Use the tray menu item “取消安装（清除数据）” to wipe the local database and password, pause capture, and return the app to first-run state.
+
 ## Architecture
 - `typeflow/database.py`: SQLite persistence, aggregated stats tables, encrypted event storage.
 - `typeflow/encryption.py`: PBKDF2-derived AES-GCM encryption with salted password verifier.
