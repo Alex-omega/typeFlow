@@ -55,6 +55,7 @@ TypingStatsEngine = _import("typeflow.stats", "stats", "stats.py").TypingStatsEn
 run_service = _import("typeflow.service", "service", "service.py").run_service
 MainWindow = _import("typeflow.ui.main_window", "ui.main_window", "ui/main_window.py").MainWindow
 TrayIcon = _import("typeflow.ui.tray", "ui.tray", "ui/tray.py").TrayIcon
+PasswordDialog = _import("typeflow.ui.password_dialog", "ui.password_dialog", "ui/password_dialog.py").PasswordDialog
 
 LOCK_MAGIC = b"\x11\x84\x13\x10"
 _lock_handle: Optional[int] = None
@@ -129,7 +130,7 @@ class TypeFlowController:
     def unlock(self, password: str) -> bool:
         record = self.db.load_password_record()
         if not record:
-            # 创建新的密码记录
+            # Create a new password record on first run
             mgr = CryptoManager(password)
             self.db.save_password_record(mgr.password_record())
         else:
@@ -139,7 +140,8 @@ class TypeFlowController:
         self.crypto = mgr
         self.engine.set_crypto(mgr)
         self.db.set_meta("cached_password", password)
-        # 重启后台服务以使用新的密码加密历史
+        self.first_run = False
+        # Restart background service to apply the new password
         self.stop_service()
         self.start_service(password)
         return True
@@ -239,24 +241,41 @@ class TypeFlowController:
 def main():
     app = QApplication(sys.argv)
     if not acquire_single_instance():
-        QMessageBox.information(None, "TypeFlow", "Typeflow已在运行中！")
+        QMessageBox.information(None, "TypeFlow", "TypeFlow is already running.")
         return
     controller = TypeFlowController()
     first_run = controller.first_run
-    if controller.crypto:
-        controller.start_service(password=getattr(controller.crypto, "password", ""))
-    else:
-        controller.start_service(password="")
+
     window = MainWindow(controller)
     tray = TrayIcon(controller, window)
     tray.show()
+
+    if first_run:
+        dlg = PasswordDialog(create_mode=True, parent=window)
+        if dlg.exec() != dlg.Accepted:
+            release_single_instance()
+            return
+        initial_password = dlg.get_password()
+        if not initial_password:
+            controller.shutdown()
+            release_single_instance()
+            return
+        if not controller.unlock(initial_password):
+            QMessageBox.warning(window, "TypeFlow", "Failed to set password.")
+            controller.shutdown()
+            release_single_instance()
+            return
+        window.refresh()
+    else:
+        controller.start_service(password=getattr(controller.crypto, "password", ""))
+
     from qfluentwidgets import InfoBar, InfoBarPosition
     if first_run:
         window.show()
     else:
         InfoBar.success(
-            title="TypeFlow 已成功启动！",
-            content="后台正在运行，可在托盘打开主界面。",
+            title="TypeFlow started",
+            content="Running in background; open the main window from the tray.",
             orient=Qt.Horizontal,
             isClosable=True,
             position=InfoBarPosition.BOTTOM,
@@ -265,8 +284,10 @@ def main():
         )
     code = app.exec_()
     controller.stop_service()
+    controller.shutdown()
     release_single_instance()
     sys.exit(code)
+
 
 if __name__ == "__main__":
     main()
