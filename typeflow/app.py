@@ -3,19 +3,37 @@ import shutil
 import sys
 from typing import List, Optional
 
+if __package__ is None or __package__ == "":
+    # Allow running as a script (PyInstaller executable) by fixing import path
+    import os
+
+    sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox, QDialog
 
-from . import config
-from .database import open_database
-from .encryption import CryptoManager
-from .keyboard_hook import KeyboardMonitor
-from .models import HistoryEntry
-from .stats import TypingStatsEngine
-from .service import run_service
-from .ui.main_window import MainWindow
-from .ui.password_dialog import PasswordDialog
-from .ui.tray import TrayIcon
+try:  # Prefer package-relative imports
+    from . import config
+    from .database import open_database
+    from .encryption import CryptoManager
+    from .keyboard_hook import KeyboardMonitor
+    from .models import HistoryEntry
+    from .stats import TypingStatsEngine
+    from .service import run_service
+    from .ui.main_window import MainWindow
+    from .ui.password_dialog import PasswordDialog
+    from .ui.tray import TrayIcon
+except ImportError:  # Fallback for direct/script execution (e.g., PyInstaller)
+    import config
+    from database import open_database
+    from encryption import CryptoManager
+    from keyboard_hook import KeyboardMonitor
+    from models import HistoryEntry
+    from stats import TypingStatsEngine
+    from service import run_service
+    from ui.main_window import MainWindow
+    from ui.password_dialog import PasswordDialog
+    from ui.tray import TrayIcon
 
 
 class TypeFlowController:

@@ -25,15 +25,16 @@ Windows tray application that records typing activity in the background, stores 
 From the project root:
 ```bash
 pip install pyinstaller
-pyinstaller --noconfirm --windowed ^
+pyinstaller --noconfirm --windowed --onefile ^
   --name TypeFlow ^
   --icon typeflow\\assets\\icon.ico ^
   --add-data "typeflow\\assets;typeflow/assets" ^
-  typeflow\\app.py
+  -m typeflow.app
 ```
 - Output binary: `dist/TypeFlow/TypeFlow.exe`.
 - Run inside your virtual environment if you use one.
 - Swap `--windowed` to `--console` if you prefer a console window for logs.
+- Note: PyInstaller会把Python运行时一起打包（含python3.dll），这是独立运行所必需，无法去除。
 
 ## Reset / uninstall
 - Use the tray menu item “取消安装（清除数据）” to wipe the local database and password, pause capture, and return the app to first-run state.
