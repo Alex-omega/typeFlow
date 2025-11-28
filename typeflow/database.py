@@ -82,6 +82,21 @@ class Database:
                 (key, value),
             )
 
+    def increment_typing_total(self, amount: int = 1) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO meta(key, value) VALUES ('typing_total', ?)
+                ON CONFLICT(key) DO UPDATE SET value = CAST(meta.value AS INTEGER) + ?
+                """,
+                (amount, amount),
+            )
+
+    def typing_total(self) -> int:
+        cur = self._conn.execute("SELECT value FROM meta WHERE key = 'typing_total'")
+        row = cur.fetchone()
+        return int(row["value"]) if row and row["value"] is not None else 0
+
     def save_password_record(self, record: PasswordRecord) -> None:
         self.set_meta("password_salt_b64", record.salt_b64)
         self.set_meta("password_verifier_b64", record.verifier_b64)
@@ -147,6 +162,10 @@ class Database:
             "SELECT key, count FROM key_usage ORDER BY count DESC LIMIT ?",
             (limit,),
         )
+        return [KeyFrequency(row["key"], row["count"]) for row in cur.fetchall()]
+
+    def key_usage_all(self) -> List[KeyFrequency]:
+        cur = self._conn.execute("SELECT key, count FROM key_usage")
         return [KeyFrequency(row["key"], row["count"]) for row in cur.fetchall()]
 
     def latest_sessions(self, limit: int = 20) -> List[SessionStat]:

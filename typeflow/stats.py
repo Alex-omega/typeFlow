@@ -75,12 +75,15 @@ class TypingStatsEngine:
                 self._finalize_session(self._last_event_ts)
 
     def snapshot(self) -> StatsSnapshot:
-        total_keys = self.db.total_keystrokes()
+        key_usage = self.db.key_usage_all()
+        typing_keys = [k for k in key_usage if self._is_letter(k.key)]
+        total_keys = sum(k.count for k in typing_keys)
         engaged_seconds = self.db.total_engaged_seconds()
         avg_kpm = 0.0
         if engaged_seconds > 0:
             avg_kpm = (total_keys / engaged_seconds) * 60.0
-        top_keys = self.db.top_keys(limit=12)
+        top_candidates = [k for k in key_usage if (self._is_letter(k.key) or self._is_space(k.key))]
+        top_keys = sorted(top_candidates, key=lambda x: x.count, reverse=True)[:12]
         today = datetime.now().strftime("%Y-%m-%d")
         daily = self.db.daily_summary(today)
         streaks_today = daily.streaks if daily else 0
@@ -97,16 +100,26 @@ class TypingStatsEngine:
         with self._lock:
             self.crypto = crypto
 
+    def _is_letter(self, label: str) -> bool:
+        return len(label) == 1 and label.isalpha()
+
+    def _is_space(self, label: str) -> bool:
+        return label.lower() == "space" or label == " "
+
     def _append_history(self, text: str, ts: float) -> None:
-        if not text or not self.crypto:
+        if not text:
             return
-        if self._history_buffer and self._history_last_ts:
-            if (ts - self._history_last_ts) > config.HISTORY_MERGE_WINDOW_SECONDS:
+        # Always record history; encrypt when crypto is available, otherwise store raw text.
+        if self.crypto:
+            if self._history_buffer and self._history_last_ts:
+                if (ts - self._history_last_ts) > config.HISTORY_MERGE_WINDOW_SECONDS:
+                    self._flush_history()
+            self._history_buffer += text
+            self._history_last_ts = ts
+            if text.endswith("\n"):
                 self._flush_history()
-        self._history_buffer += text
-        self._history_last_ts = ts
-        if text.endswith("\n"):
-            self._flush_history()
+        else:
+            self.db.add_secure_event(ts, text)
 
     def _flush_history(self, force: bool = False) -> None:
         if not self._history_buffer or not self.crypto:

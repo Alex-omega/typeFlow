@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Callable, List
 
@@ -14,6 +15,35 @@ from qfluentwidgets import BodyLabel, LineEdit, PrimaryPushButton, StrongBodyLab
 
 from .. import config
 from ..models import HistoryEntry
+
+ARROW_MAP = {
+    "left": "←",
+    "right": "→",
+    "up": "↑",
+    "down": "↓",
+}
+
+
+def format_tokens(text: str) -> str:
+    """Replace Key.xxx / Button.xxx tokens with readable [yyy] markers."""
+    pattern = re.compile(r"(Key\.([A-Za-z0-9_]+)|Button\.([A-Za-z0-9_]+))")
+
+    def repl(match: re.Match) -> str:
+        key_name = match.group(2)
+        mouse_name = match.group(3)
+        if key_name:
+            lower = key_name.lower()
+            yyy = ARROW_MAP.get(lower, key_name)
+        else:
+            raw = mouse_name
+            lower = raw.lower()
+            parts = lower.replace(".", "_").split("_")
+            btn = parts[0] if parts else "mouse"
+            action = " ".join(parts[1:]) if len(parts) > 1 else "click"
+            yyy = f"{btn} {action}".strip()
+        return f" [{yyy}] "
+
+    return pattern.sub(repl, text)
 
 
 class HistoryPage(QWidget):
@@ -78,5 +108,6 @@ class HistoryPage(QWidget):
         self.list_widget.clear()
         for entry in entries:
             ts = datetime.fromtimestamp(entry.ts).strftime("%Y-%m-%d %H:%M:%S")
-            item = QListWidgetItem(f"[{ts}] {entry.text}")
+            pretty = format_tokens(entry.text)
+            item = QListWidgetItem(f"[{ts}] {pretty}")
             self.list_widget.addItem(item)

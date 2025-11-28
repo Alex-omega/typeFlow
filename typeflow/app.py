@@ -1,34 +1,60 @@
+import importlib
+import importlib.util
 import multiprocessing as mp
 import os
 import secrets
 import shutil
 import sys
+from pathlib import Path
 from typing import List, Optional
 
-if __package__ is None or __package__ == "":
-    sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+# Normalize sys.path for PyInstaller/onefile and direct script execution
+HERE = Path(__file__).resolve()
+PKG_DIR = HERE.parent
+PROJ_ROOT = PKG_DIR.parent
+for p in [PKG_DIR, PROJ_ROOT]:
+    sp = str(p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    mp_root = str(Path(sys._MEIPASS))
+    if mp_root not in sys.path:
+        sys.path.insert(0, mp_root)
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
-try:  # Prefer package-relative imports
-    from . import config
-    from .database import open_database
-    from .encryption import CryptoManager
-    from .models import HistoryEntry
-    from .stats import TypingStatsEngine
-    from .service import run_service
-    from .ui.main_window import MainWindow
-    from .ui.tray import TrayIcon
-except ImportError:  # Fallback for direct/script execution (e.g., PyInstaller)
-    import config
-    from database import open_database
-    from encryption import CryptoManager
-    from models import HistoryEntry
-    from stats import TypingStatsEngine
-    from service import run_service
-    from ui.main_window import MainWindow
-    from ui.tray import TrayIcon
+
+def _import(module: str, fallback: str = "", rel_file: str | None = None):
+    """Import helper that tries package name, fallback, then file path."""
+    try:
+        return importlib.import_module(module)
+    except ImportError:
+        if fallback:
+            try:
+                return importlib.import_module(fallback)
+            except ImportError:
+                pass
+        if rel_file:
+            candidate = PKG_DIR / rel_file
+            if candidate.exists():
+                spec = importlib.util.spec_from_file_location(module, candidate)
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    sys.modules[module] = mod
+                    return mod
+        raise
+
+
+config = _import("typeflow.config", "config", "config.py")
+open_database = _import("typeflow.database", "database", "database.py").open_database
+CryptoManager = _import("typeflow.encryption", "encryption", "encryption.py").CryptoManager
+HistoryEntry = _import("typeflow.models", "models", "models.py").HistoryEntry
+TypingStatsEngine = _import("typeflow.stats", "stats", "stats.py").TypingStatsEngine
+run_service = _import("typeflow.service", "service", "service.py").run_service
+MainWindow = _import("typeflow.ui.main_window", "ui.main_window", "ui/main_window.py").MainWindow
+TrayIcon = _import("typeflow.ui.tray", "ui.tray", "ui/tray.py").TrayIcon
 
 LOCK_MAGIC = b"\x11\x84\x13\x10"
 _lock_handle: Optional[int] = None
@@ -99,34 +125,29 @@ class TypeFlowController:
                 self.crypto = mgr
                 self.engine.set_crypto(mgr)
                 return
-        if not record:
-            # 自动生成本地密码，静默启动
-            password = secrets.token_hex(16)
-            mgr = CryptoManager(password)
-            self.crypto = mgr
-            self.engine.set_crypto(mgr)
-            self.db.save_password_record(mgr.password_record())
-            self.db.set_meta("cached_password", password)
 
     def unlock(self, password: str) -> bool:
         record = self.db.load_password_record()
         if not record:
-            return False
-        mgr = CryptoManager.verify_password(password, record)
-        if not mgr:
-            return False
+            # 创建新的密码记录
+            mgr = CryptoManager(password)
+            self.db.save_password_record(mgr.password_record())
+        else:
+            mgr = CryptoManager.verify_password(password, record)
+            if not mgr:
+                return False
         self.crypto = mgr
         self.engine.set_crypto(mgr)
         self.db.set_meta("cached_password", password)
-        if self.capture_flag is None and self.service_process is None:
-            # if service not started, start it with the unlocked password
-            self.start_service(password)
+        # 重启后台服务以使用新的密码加密历史
+        self.stop_service()
+        self.start_service(password)
         return True
 
     def fetch_history(self, offset: int, limit: int) -> List[HistoryEntry]:
         entries = self.db.secure_history(offset, limit)
         if not self.crypto:
-            return []
+            return entries
         return [HistoryEntry(ts=e.ts, text=self.crypto.decrypt_text(e.text)) for e in entries]
 
     def snapshot(self):

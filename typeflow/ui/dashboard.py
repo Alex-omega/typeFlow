@@ -44,10 +44,10 @@ class DashboardPage(QWidget):
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(12)
 
-        self.total_card = SummaryCard("Total keystrokes", "0")
-        self.speed_card = SummaryCard("Average KPM", "0")
-        self.streak_card = SummaryCard("Streaks today", "0")
-        self.active_card = SummaryCard("Active time today", "0s")
+        self.total_card = SummaryCard("历史打字", "0")
+        self.speed_card = SummaryCard("平均速度", "0")
+        self.streak_card = SummaryCard("今日持续输入", "0")
+        self.active_card = SummaryCard("今日专注时间", "0s")
 
         cards = QWidget()
         card_layout = QGridLayout(cards)
@@ -74,9 +74,9 @@ class DashboardPage(QWidget):
         layout.addWidget(self.top_keys_table, stretch=1)
 
     def set_data(self, snapshot: StatsSnapshot, daily: List[DailySummary]) -> None:
-        self.total_card.set_value(f"{snapshot.total_keys:,}")
+        self.total_card.set_value(f"{snapshot.total_keys:,} keys")
         self.speed_card.set_value(f"{snapshot.avg_kpm:.1f} kpm")
-        self.streak_card.set_value(str(snapshot.streaks_today))
+        self.streak_card.set_value(str(snapshot.streaks_today)+" times")
         active_minutes = snapshot.active_seconds_today / 60
         self.active_card.set_value(f"{active_minutes:.1f} min")
 

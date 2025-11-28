@@ -24,16 +24,15 @@ Windows 后台托盘应用，使用 Python、PyQt-Fluent-Widgets 和 PyQtGraph/M
 在项目根目录运行：
 ```bash
 pip install pyinstaller
-pyinstaller --noconfirm --windowed --onefile ^
+pyinstaller --noconfirm --windowed ^
   --name TypeFlow ^
   --icon typeflow\\assets\\icon.ico ^
   --add-data \"typeflow\\assets;typeflow/assets\" ^
-  -m typeflow.app
+  typeflow\\app.py
 ```
 - 生成的可执行文件位于 `dist/TypeFlow/TypeFlow.exe`。
 - 若使用虚拟环境，请在虚拟环境中执行以上命令。
 - 若需要控制台日志，将 `--windowed` 改为 `--console`。
-- 说明：PyInstaller 会将 Python 运行时一并打包（含 python3.dll），独立运行需要该依赖，无法去除。
 
 ## 目录结构
 - `typeflow/app.py`: 应用入口，托盘与主窗体。
