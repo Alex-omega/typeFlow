@@ -9,19 +9,21 @@ from .keyboard_hook import KeyboardMonitor
 from .stats import TypingStatsEngine
 
 
-def _load_crypto(password: str, db):
+def _load_crypto(password: Optional[str], db):
     record = db.load_password_record()
-    if record:
+    if record and password:
         mgr = CryptoManager.verify_password(password, record)
         if mgr:
             return mgr
-        # fallback: create new if verification fails (still allows running, but history decrypt may fail)
-    mgr = CryptoManager(password)
-    db.save_password_record(mgr.password_record())
-    return mgr
+        return None
+    if not record and password:
+        mgr = CryptoManager(password)
+        db.save_password_record(mgr.password_record())
+        return mgr
+    return None
 
 
-def run_service(stop_event: mp.Event, capture_flag: mp.Value, password: str):
+def run_service(stop_event: mp.Event, capture_flag: mp.Value, password: Optional[str] = None):
     """Background process entry: runs keyboard monitor and stats engine."""
     db = open_database()
     crypto = _load_crypto(password, db)

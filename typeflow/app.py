@@ -1,39 +1,68 @@
 import multiprocessing as mp
+import os
+import secrets
 import shutil
 import sys
 from typing import List, Optional
 
 if __package__ is None or __package__ == "":
-    # Allow running as a script (PyInstaller executable) by fixing import path
-    import os
-
     sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QMessageBox, QDialog
+from PyQt5.QtWidgets import QApplication, QMessageBox
 
 try:  # Prefer package-relative imports
     from . import config
     from .database import open_database
     from .encryption import CryptoManager
-    from .keyboard_hook import KeyboardMonitor
     from .models import HistoryEntry
     from .stats import TypingStatsEngine
     from .service import run_service
     from .ui.main_window import MainWindow
-    from .ui.password_dialog import PasswordDialog
     from .ui.tray import TrayIcon
 except ImportError:  # Fallback for direct/script execution (e.g., PyInstaller)
     import config
     from database import open_database
     from encryption import CryptoManager
-    from keyboard_hook import KeyboardMonitor
     from models import HistoryEntry
     from stats import TypingStatsEngine
     from service import run_service
     from ui.main_window import MainWindow
-    from ui.password_dialog import PasswordDialog
     from ui.tray import TrayIcon
+
+LOCK_MAGIC = b"\x11\x84\x13\x10"
+_lock_handle: Optional[int] = None
+_lock_path = None
+
+
+def acquire_single_instance() -> bool:
+    """Use magic-number lock file to prevent multi-instance."""
+    global _lock_handle, _lock_path
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _lock_path = config.DATA_DIR / "typeflow.lock"
+    try:
+        fd = os.open(str(_lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+        os.write(fd, LOCK_MAGIC + str(os.getpid()).encode())
+        _lock_handle = fd
+        return True
+    except FileExistsError:
+        return False
+    except Exception:
+        return True  # fail-open to avoid blocking startup unexpectedly
+
+
+def release_single_instance() -> None:
+    global _lock_handle, _lock_path
+    if _lock_handle is not None:
+        try:
+            os.close(_lock_handle)
+        except Exception:
+            pass
+    if _lock_path and os.path.exists(_lock_path):
+        try:
+            os.remove(_lock_path)
+        except Exception:
+            pass
 
 
 class TypeFlowController:
@@ -43,6 +72,8 @@ class TypeFlowController:
         self.engine = TypingStatsEngine(self.db, crypto=None)
         self.capturing = False
         self.theme = self.db.get_meta("ui_theme") or config.DEFAULT_THEME
+        initial_record = self.db.load_password_record()
+        self.first_run = initial_record is None
         font_size_meta = self.db.get_meta("ui_font_size")
         if font_size_meta:
             self.font_size = float(font_size_meta)
@@ -56,24 +87,26 @@ class TypeFlowController:
         self.service_process: Optional[mp.Process] = None
         self.stop_event: Optional[mp.Event] = None
         self.capture_flag: Optional[mp.Value] = None
+        self._bootstrap_crypto(initial_record)
 
-    def ensure_password(self, parent) -> bool:
-        record = self.db.load_password_record()
+    def _bootstrap_crypto(self, record=None) -> None:
+        if record is None:
+            record = self.db.load_password_record()
+        cached = self.db.get_meta("cached_password")
+        if record and cached:
+            mgr = CryptoManager.verify_password(cached, record)
+            if mgr:
+                self.crypto = mgr
+                self.engine.set_crypto(mgr)
+                return
         if not record:
-            dialog = PasswordDialog(create_mode=True, parent=parent)
-            if dialog.exec_() != QDialog.Accepted:
-                return False
-            mgr = CryptoManager(dialog.get_password())
+            # 自动生成本地密码，静默启动
+            password = secrets.token_hex(16)
+            mgr = CryptoManager(password)
             self.crypto = mgr
             self.engine.set_crypto(mgr)
             self.db.save_password_record(mgr.password_record())
-            return True
-
-        dialog = PasswordDialog(create_mode=False, parent=parent)
-        if dialog.exec_() == QDialog.Accepted:
-            if not self.unlock(dialog.get_password()):
-                QMessageBox.warning(parent, config.APP_NAME, "Password incorrect; history remains locked.")
-        return True
+            self.db.set_meta("cached_password", password)
 
     def unlock(self, password: str) -> bool:
         record = self.db.load_password_record()
@@ -84,6 +117,7 @@ class TypeFlowController:
             return False
         self.crypto = mgr
         self.engine.set_crypto(mgr)
+        self.db.set_meta("cached_password", password)
         if self.capture_flag is None and self.service_process is None:
             # if service not started, start it with the unlocked password
             self.start_service(password)
@@ -104,7 +138,8 @@ class TypeFlowController:
     def start_capture(self):
         if self.capturing:
             return
-        self.monitor.start()
+        if self.capture_flag:
+            self.capture_flag.value = True
         self.capturing = True
 
     def pause_capture(self):
@@ -156,9 +191,10 @@ class TypeFlowController:
         self.stop_event = mp.Event()
         self.capture_flag = mp.Value("b", True)
         self.capturing = True
+        pw = password or self.db.get_meta("cached_password") or ""
         self.service_process = mp.Process(
             target=run_service,
-            args=(self.stop_event, self.capture_flag, password),
+            args=(self.stop_event, self.capture_flag, pw),
             daemon=True,
         )
         self.service_process.start()
@@ -181,21 +217,22 @@ class TypeFlowController:
 
 def main():
     app = QApplication(sys.argv)
-    controller = TypeFlowController()
-    first_run = controller.db.load_password_record() is None
-    if not controller.ensure_password(None):
+    if not acquire_single_instance():
+        QMessageBox.information(None, "TypeFlow", "Typeflow已在运行中！")
         return
-    # ensure monitor service is running
+    controller = TypeFlowController()
+    first_run = controller.first_run
     if controller.crypto:
-        controller.start_service(password=controller.crypto.password if hasattr(controller.crypto, "password") else "")
+        controller.start_service(password=getattr(controller.crypto, "password", ""))
+    else:
+        controller.start_service(password="")
     window = MainWindow(controller)
     tray = TrayIcon(controller, window)
     tray.show()
+    from qfluentwidgets import InfoBar, InfoBarPosition
     if first_run:
         window.show()
     else:
-        # show transient toast in the center bottom
-        from qfluentwidgets import InfoBar, InfoBarPosition
         InfoBar.success(
             title="TypeFlow 已成功启动！",
             content="后台正在运行，可在托盘打开主界面。",
@@ -205,8 +242,10 @@ def main():
             duration=3000,
             parent=window,
         )
-    sys.exit(app.exec_())
-
+    code = app.exec_()
+    controller.stop_service()
+    release_single_instance()
+    sys.exit(code)
 
 if __name__ == "__main__":
     main()
