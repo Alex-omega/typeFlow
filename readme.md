@@ -1,53 +1,34 @@
 # TypeFlow
 
-Windows tray application that records typing activity in the background, stores encrypted history locally, and presents modern Fluent-style analytics built with Python, PyQt-Fluent-Widgets, and PyQtGraph/Matplotlib.
+Windows 后台托盘应用，使用 Python、PyQt-Fluent-Widgets 和 PyQtGraph/Matplotlib 记录键盘输入，展示相关数据统计。
 
-## Features
-- Background keyboard hook via `pynput` (runs outside the UI thread).
-- SQLite persistence with password-gated encryption for full typing history; non-sensitive aggregate stats stay visible without a password.
-- Dashboards for key frequency, average typing speed, cumulative counts, and peak activity windows.
-- Secure history viewer unlocked with the user’s password; first launch prompts for password creation.
-- System tray experience: start/stop capture, quick glance stats, and opening the main dashboard.
-- Settings page: pause/resume capture, switch theme (dark/light/system), and adjust font scale.
+## 功能
+- 后台 `pynput` 键盘监听（不阻塞 UI），可随托盘启动/暂停。
+- SQLite 本地存储，完整输入历史 AES-GCM 加密；聚合统计无需密码即可查看。
+- 仪表盘展示：按键频次、平均打字速率、累计按键、活跃时段/日统计。
+- 首次启动要求设置加密密码；之后可通过输入密码解锁历史查看。
+- Fluent 风格的主界面 + 托盘菜单；自定义图标已内置 (`typeflow/assets/icon.ico`)。
 
-## Getting started
-1) Install dependencies (network access required):
+## 安装与运行
+### 基于 Python 运行
+0) 确认环境：
+   1. 要求 Python 3.11.5 或更高版本；
+   2. 本程序仅适用于 Windows 10 及以上。
+1) 安装依赖：
    ```bash
    pip install -r requirements.txt
    ```
-2) Run the app:
+2) 启动应用：
    ```bash
    python -m typeflow.app
    ```
-3) On first launch, create an encryption password. Later, use that password to unlock the history view; aggregated stats remain available without it.
 
-## Packaging to Windows .exe (PyInstaller)
-From the project root:
-```bash
-pip install pyinstaller
-pyinstaller --noconfirm --windowed --onefile ^
-  --name TypeFlow ^
-  --icon typeflow\\assets\\icon.ico ^
-  --add-data "typeflow\\assets;typeflow/assets" ^
-  -m typeflow.app
-```
-- Output binary: `dist/TypeFlow/TypeFlow.exe`.
-- Run inside your virtual environment if you use one.
-- Swap `--windowed` to `--console` if you prefer a console window for logs.
-- Note: PyInstaller会把Python运行时一起打包（含python3.dll），这是独立运行所必需，无法去除。
+### 基于可执行文件运行
+详见项目 Release 页面。
 
-## Reset / uninstall
-- Use the tray menu item “取消安装（清除数据）” to wipe the local database and password, pause capture, and return the app to first-run state.
+## 取消安装 / 重置
+- 托盘菜单选择“取消安装（清除数据）”，将清空本地数据库与密码，暂停捕获，并恢复到首次启动状态。
 
-## Architecture
-- `typeflow/database.py`: SQLite persistence, aggregated stats tables, encrypted event storage.
-- `typeflow/encryption.py`: PBKDF2-derived AES-GCM encryption with salted password verifier.
-- `typeflow/stats.py`: Session segmentation (idle/engagement thresholds) and snapshot calculations.
-- `typeflow/keyboard_hook.py`: Background `pynput` listener feeding the stats engine.
-- `typeflow/ui/*`: PyQt-Fluent-Widgets windows (dashboard, history unlock), tray icon, plotting via PyQtGraph.
-- `typeflow/assets/icon.ico`: 自定义图标，已用于主窗口和托盘。
-
-## Notes
-- Idle and engagement thresholds are configurable in `typeflow/config.py`.
-- Typing history is encrypted at rest. Keep your password safe; it cannot be recovered if lost.
-- New encrypted history is captured only after a password is set/unlocked; aggregated stats still accumulate without unlocking.
+## 注意事项
+- 加密密码无法找回，请妥善保存；未解锁时不会写入新的明文解密能力。
+- 长时间运行建议保持 PyInstaller 打包版本以避免依赖缺失。
